@@ -1,0 +1,413 @@
+---
+title: "Integration Examples"
+description: "Real-world examples of using the Rails SDK"
+---
+
+## Payment Processing Flow
+
+Complete example of processing a payment transaction:
+
+```typescript
+import { Rails } from "@rails/sdk";
+import * as errors from "@rails/sdk/models/errors";
+
+const rails = new Rails({
+  serverURL: "http://localhost:8000/api",
+});
+
+async function processPayment(
+  senderId: string,
+  receiverId: string,
+  amount: number,
+  currency: string = "NGN"
+) {
+  try {
+    // 1. Submit transaction via webhook
+    console.log("Submitting payment transaction...");
+    const webhook = await rails.postWebhook({
+      txnRef: `TXN-${Date.now()}`,
+      senderAccount: senderId,
+      receiverAccount: receiverId,
+      senderBank: "BANK-A",
+      receiverBank: "BANK-B",
+      amount: amount,
+      currency: currency,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        description: "Payment processing",
+        source: "web-app",
+      },
+    });
+
+    console.log(`✓ Transaction submitted: ${webhook.txn_ref}`);
+
+    // 2. Wait for settlement
+    const maxRetries = 10;
+    let attempts = 0;
+
+    while (attempts < maxRetries) {
+      // Check pending transactions
+      const pending = await rails.getLedgerPending();
+      const transaction = pending.pending.find(
+        (t) => t.txnRef === webhook.txn_ref
+      );
+
+      if (!transaction) {
+        console.log("✓ Transaction settled!");
+        return { success: true, txnRef: webhook.txn_ref };
+      }
+
+      console.log(
+        `Transaction still pending, retrying in 2 seconds... (${attempts + 1}/${maxRetries})`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      attempts++;
+    }
+
+    throw new Error("Transaction settlement timeout");
+  } catch (error) {
+    if (error instanceof errors.RailsError) {
+      console.error(
+        `✗ Payment failed: ${error.statusCode} - ${error.message}`
+      );
+      return { success: false, error: error.message };
+    }
+    throw error;
+  }
+}
+
+// Usage
+await processPayment("ACC-001", "ACC-002", 50000, "NGN");
+```
+
+## Batch Settlement
+
+Process multiple pending transactions in a batch:
+
+```typescript
+async function batchSettlement(authorizer: string) {
+  try {
+    // 1. Get all pending transactions
+    console.log("Fetching pending transactions...");
+    const pending = await rails.getLedgerPending();
+
+    if (pending.pending.length === 0) {
+      console.log("No pending transactions to settle");
+      return { settled: [], skipped: 0 };
+    }
+
+    console.log(`Found ${pending.pending.length} pending transactions`);
+
+    // 2. Execute settlement
+    console.log("Initiating settlement...");
+    const settlement = await rails.postLedgerSettle({
+      authorized_by: authorizer,
+      force: false,
+    });
+
+    console.log(`✓ Settlement completed`);
+    console.log(`  - Settled: ${settlement.settled?.length || 0}`);
+    console.log(`  - Total: ${pending.count}`);
+
+    return {
+      settled: settlement.settled || [],
+      total: pending.count,
+      timestamp: settlement.timestamp,
+    };
+  } catch (error) {
+    if (error instanceof errors.RailsError) {
+      console.error(`Settlement failed: ${error.statusCode} - ${error.message}`);
+      
+      // Check if it's a validation error
+      if (error instanceof errors.ErrorT && error.data$) {
+        console.error("Details:", error.data$.message);
+      }
+    }
+    throw error;
+  }
+}
+
+// Usage
+const result = await batchSettlement("admin@bank.com");
+console.log("Settlement result:", result);
+```
+
+## Dashboard Monitoring
+
+Build a monitoring dashboard with real-time metrics:
+
+```typescript
+async function getDashboardSnapshot() {
+  try {
+    const metrics = await rails.getDashboardMetrics();
+
+    return {
+      // Performance Metrics
+      activeBanks: metrics.activeBanks,
+      completionRate: `${(metrics.completionRate * 100).toFixed(2)}%`,
+      totalRevenue: `₦${metrics.totalRevenue?.toLocaleString() || 0}`,
+
+      // Settlement Health
+      reservePool: metrics.settlementOverview.reservePool,
+      bankPerformance: metrics.settlementOverview.bankPerformance,
+
+      // Transaction Status
+      activeTransactions: metrics.activeTransactions,
+      todaysTransactions: metrics.settlementOverview.todaysTransactionLogs
+        .length,
+
+      // Weekend Operations
+      weekendFees: metrics.settlementOverview.processingFeesThisWeekend,
+
+      // Monday Preparation
+      mondayReady: metrics.mondayClearingPreparation,
+
+      // Recent Activity
+      recentLogs: metrics.transactionLogs?.slice(0, 5) || [],
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error("Failed to fetch dashboard metrics:", error);
+    throw error;
+  }
+}
+
+// Usage with periodic updates
+setInterval(async () => {
+  const dashboard = await getDashboardSnapshot();
+  console.log("Dashboard Update:", dashboard);
+}, 30000); // Every 30 seconds
+```
+
+## Transaction Search and Filtering
+
+Advanced transaction querying with filters:
+
+```typescript
+async function searchTransactions(filters: {
+  status?: string;
+  bank?: string;
+  startDate?: Date;
+  endDate?: Date;
+  minAmount?: number;
+  maxAmount?: number;
+}) {
+  try {
+    const response = await rails.getTransactions({
+      status: filters.status,
+      bank: filters.bank,
+      page: 1,
+      pageSize: 100,
+    });
+
+    let transactions = response.data || [];
+
+    // Client-side filtering for date range
+    if (filters.startDate || filters.endDate) {
+      transactions = transactions.filter((tx) => {
+        const txDate = new Date(tx.timestamp);
+        if (filters.startDate && txDate < filters.startDate) return false;
+        if (filters.endDate && txDate > filters.endDate) return false;
+        return true;
+      });
+    }
+
+    // Filter by amount range
+    if (filters.minAmount || filters.maxAmount) {
+      transactions = transactions.filter((tx) => {
+        if (filters.minAmount && tx.amount < filters.minAmount) return false;
+        if (filters.maxAmount && tx.amount > filters.maxAmount) return false;
+        return true;
+      });
+    }
+
+    // Aggregate statistics
+    const stats = {
+      count: transactions.length,
+      total: transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0),
+      average:
+        transactions.length > 0
+          ? transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0) /
+            transactions.length
+          : 0,
+      byStatus: transactions.reduce(
+        (acc, tx) => {
+          acc[tx.status || "unknown"] = (acc[tx.status || "unknown"] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>
+      ),
+    };
+
+    return {
+      transactions,
+      stats,
+      filters,
+    };
+  } catch (error) {
+    console.error("Transaction search failed:", error);
+    throw error;
+  }
+}
+
+// Usage
+const result = await searchTransactions({
+  status: "completed",
+  bank: "BANK-A",
+  startDate: new Date("2024-01-01"),
+  endDate: new Date("2024-01-31"),
+  minAmount: 10000,
+});
+
+console.log("Found", result.stats.count, "transactions");
+console.log("Total value:", result.stats.total);
+console.log("Status breakdown:", result.stats.byStatus);
+```
+
+## Load Testing with Simulator
+
+Generate test load for capacity testing:
+
+```typescript
+async function runLoadTest(config: {
+  transactionCount: number;
+  interval: number;
+  iterations: number;
+}) {
+  const results = {
+    started: new Date(),
+    totalTransactions: 0,
+    errors: 0,
+    duration: 0,
+  };
+
+  try {
+    for (let i = 0; i < config.iterations; i++) {
+      console.log(
+        `Starting iteration ${i + 1}/${config.iterations}...`
+      );
+
+      // Start simulator
+      await rails.postSimulatorStart({
+        count: config.transactionCount,
+        interval: config.interval,
+      });
+
+      console.log(
+        `✓ Simulator running: ${config.transactionCount} transactions`
+      );
+
+      results.totalTransactions += config.transactionCount;
+
+      // Wait between iterations
+      if (i < config.iterations - 1) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, config.transactionCount * config.interval + 1000)
+        );
+      }
+    }
+
+    results.duration =
+      new Date().getTime() - results.started.getTime();
+
+    console.log(`\n=== Load Test Complete ===`);
+    console.log(`Total transactions: ${results.totalTransactions}`);
+    console.log(`Duration: ${(results.duration / 1000).toFixed(2)}s`);
+    console.log(
+      `TPS: ${(results.totalTransactions / (results.duration / 1000)).toFixed(2)}`
+    );
+
+    return results;
+  } catch (error) {
+    results.errors++;
+    console.error("Load test failed:", error);
+    throw error;
+  }
+}
+
+// Usage
+await runLoadTest({
+  transactionCount: 100,
+  interval: 10,
+  iterations: 3,
+});
+```
+
+## Error Recovery Pattern
+
+Implement graceful error handling with recovery:
+
+```typescript
+async function resilientSettlement(
+  authorizer: string,
+  options: {
+    maxRetries?: number;
+    retryDelay?: number;
+  } = {}
+) {
+  const maxRetries = options.maxRetries || 3;
+  const retryDelay = options.retryDelay || 5000;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Settlement attempt ${attempt}/${maxRetries}...`);
+
+      const result = await rails.postLedgerSettle({
+        authorized_by: authorizer,
+      });
+
+      console.log(`✓ Settlement successful on attempt ${attempt}`);
+      return { success: true, result, attempts: attempt };
+    } catch (error) {
+      const isLastAttempt = attempt === maxRetries;
+
+      if (error instanceof errors.RailsError) {
+        // Don't retry on client errors (4xx)
+        if (error.statusCode >= 400 && error.statusCode < 500) {
+          console.error(
+            `Client error (${error.statusCode}), not retrying:`,
+            error.message
+          );
+          return {
+            success: false,
+            error: error.message,
+            attempts: attempt,
+            retryable: false,
+          };
+        }
+
+        // Retry on server errors (5xx)
+        if (!isLastAttempt) {
+          console.warn(
+            `Server error (${error.statusCode}), retrying in ${retryDelay}ms...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        } else {
+          return {
+            success: false,
+            error: error.message,
+            attempts: attempt,
+            retryable: true,
+          };
+        }
+      } else {
+        // Unknown error
+        console.error("Unknown error:", error);
+        if (!isLastAttempt) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+}
+
+// Usage
+const result = await resilientSettlement("admin@bank.com", {
+  maxRetries: 5,
+  retryDelay: 2000,
+});
+```
+
+These examples demonstrate real-world patterns for building robust Rails SDK integrations.

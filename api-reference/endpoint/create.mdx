@@ -1,0 +1,201 @@
+---
+title: "Create User"
+api: "POST https://api.rails.com/v1/users"
+description: "Create a new user account"
+---
+
+Creates a new user account in the Rails banking system. This endpoint handles customer onboarding with proper validation and KYC compliance.
+
+## Request
+
+<ParamField body="first_name" type="string" required>
+  User's first name (2-50 characters)
+</ParamField>
+
+<ParamField body="last_name" type="string" required>
+  User's last name (2-50 characters)
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Valid email address (must be unique)
+</ParamField>
+
+<ParamField body="phone" type="string" required>
+  Phone number in international format (e.g., +1-555-0123)
+</ParamField>
+
+<ParamField body="date_of_birth" type="string" required>
+  Date of birth in YYYY-MM-DD format
+</ParamField>
+
+<ParamField body="address" type="object" required>
+  User's address information
+  <Expandable title="Address properties">
+    <ParamField body="street" type="string" required>
+      Street address
+    </ParamField>
+    <ParamField body="city" type="string" required>
+      City name
+    </ParamField>
+    <ParamField body="state" type="string" required>
+      State or province code
+    </ParamField>
+    <ParamField body="zip_code" type="string" required>
+      Postal/ZIP code
+    </ParamField>
+    <ParamField body="country" type="string">
+      Country code (defaults to US)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Optional custom metadata (key-value pairs)
+</ParamField>
+
+## Response
+
+<ResponseField name="user_id" type="string">
+  Unique identifier for the created user
+</ResponseField>
+
+<ResponseField name="first_name" type="string">
+  User's first name
+</ResponseField>
+
+<ResponseField name="last_name" type="string">
+  User's last name
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User's email address
+</ResponseField>
+
+<ResponseField name="phone" type="string">
+  User's phone number
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  User status: `active`, `pending`, or `suspended`
+</ResponseField>
+
+<ResponseField name="kyc_status" type="string">
+  KYC verification status: `pending`, `verified`, or `rejected`
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp of user creation
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  ISO 8601 timestamp of last update
+</ResponseField>
+
+## Example
+
+<RequestExample>
+
+```typescript TypeScript SDK
+import { Rails } from "@rails/sdk";
+
+const rails = new Rails({
+  apiKey: process.env.RAILS_API_KEY
+});
+
+const user = await rails.users.create({
+  firstName: "John",
+  lastName: "Doe",
+  email: "john.doe@example.com",
+  phone: "+1-555-0123",
+  dateOfBirth: "1990-01-15",
+  address: {
+    street: "123 Main Street",
+    city: "San Francisco",
+    state: "CA",
+    zipCode: "94105",
+    country: "US"
+  },
+  metadata: {
+    referralSource: "website",
+    campaignId: "spring2024"
+  }
+});
+
+console.log("User created:", user.userId);
+```
+
+```typescript Fetch API
+const response = await fetch('https://api.rails.com/v1/users', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer your_api_key_here',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    first_name: "John",
+    last_name: "Doe", 
+    email: "john.doe@example.com",
+    phone: "+1-555-0123",
+    date_of_birth: "1990-01-15",
+    address: {
+      street: "123 Main Street",
+      city: "San Francisco", 
+      state: "CA",
+      zip_code: "94105",
+      country: "US"
+    }
+  })
+});
+
+const user = await response.json();
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json Success Response
+{
+  "user_id": "user_abc123def456",
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "john.doe@example.com", 
+  "phone": "+1-555-0123",
+  "status": "active",
+  "kyc_status": "pending",
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
+}
+```
+
+```json Error Response
+{
+  "error": {
+    "code": "validation_failed",
+    "message": "Email address is already registered",
+    "field": "email",
+    "value": "john.doe@example.com"
+  }
+}
+```
+
+</ResponseExample>
+
+## Error Codes
+
+| Code | Description |
+|------|-------------|
+| `validation_failed` | Required field missing or invalid format |
+| `email_already_exists` | Email address is already registered |
+| `invalid_phone_format` | Phone number format is invalid |
+| `invalid_date_format` | Date of birth format is invalid |
+| `underage_user` | User must be 18 years or older |
+| `restricted_country` | Service not available in user's country |
+
+## Notes
+
+- Users must be at least 18 years old
+- Email addresses must be unique across the system
+- Phone numbers are validated for proper international format
+- KYC verification is initiated automatically after user creation
+- User status starts as `active` for most cases, `pending` if additional verification is required

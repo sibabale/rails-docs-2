@@ -1,0 +1,297 @@
+---
+title: "Error Handling & Retries"
+description: "Handle errors and configure retries in the Rails SDK"
+---
+
+## Error Types
+
+All HTTP errors in the SDK extend the base `RailsError` class:
+
+```typescript
+import * as errors from "@rails/sdk/models/errors";
+
+const error = {
+  message: "Error message",
+  statusCode: 400,
+  headers: new Headers(),
+  body: "Error response body",
+  rawResponse: new Response(),
+  data$: {}, // Optional structured error data
+};
+```
+
+### Error Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `message` | `string` | Human-readable error description |
+| `statusCode` | `number` | HTTP status code (e.g., 400, 404, 500) |
+| `headers` | `Headers` | Response headers |
+| `body` | `string` | Raw response body |
+| `rawResponse` | `Response` | Full HTTP response object |
+| `data$` | `object` | Structured error data (if available) |
+
+## Error Handling Example
+
+```typescript
+import { Rails } from "@rails/sdk";
+import * as errors from "@rails/sdk/models/errors";
+
+const rails = new Rails();
+
+async function settlePendingTransactions() {
+  try {
+    const result = await rails.postLedgerSettle({
+      authorized_by: "user@example.com",
+    });
+    
+    console.log("Settlement successful:", result.settled);
+  } catch (error) {
+    // Check if it's an SDK error
+    if (error instanceof errors.RailsError) {
+      const statusCode = error.statusCode;
+      const message = error.message;
+      
+      // Handle different error types
+      if (statusCode === 400) {
+        console.error("Invalid request:", message);
+      } else if (statusCode === 500) {
+        console.error("Server error:", message);
+      } else {
+        console.error("API error:", message);
+      }
+      
+      // Access structured error data
+      if (error instanceof errors.ErrorT && error.data$) {
+        console.log("Error details:", error.data$.message);
+        console.log("Correlation ID:", error.data$.correlation_id);
+      }
+    } else {
+      console.error("Unknown error:", error);
+    }
+  }
+}
+```
+
+## Retry Configuration
+
+The SDK supports automatic retries with configurable backoff strategies. You can set retries globally or per-operation.
+
+### Per-Operation Retries
+
+Override retry behavior for a specific operation:
+
+```typescript
+const result = await rails.postLedgerSettle(
+  {
+    authorized_by: "user@example.com",
+  },
+  {
+    retries: {
+      strategy: "backoff",
+      backoff: {
+        initialInterval: 1000,      // Start with 1 second
+        maxInterval: 30000,         // Max 30 seconds between retries
+        exponent: 1.5,              // Exponential backoff
+        maxElapsedTime: 300000,     // Total 5 minutes max
+      },
+      retryConnectionErrors: true,  // Retry on connection failures
+    },
+  }
+);
+```
+
+### Global Retries
+
+Configure default retry behavior for all operations:
+
+```typescript
+const rails = new Rails({
+  retryConfig: {
+    strategy: "backoff",
+    backoff: {
+      initialInterval: 500,
+      maxInterval: 30000,
+      exponent: 1.5,
+      maxElapsedTime: 300000,
+    },
+    retryConnectionErrors: true,
+  },
+});
+
+// All operations now use this retry configuration
+const result = await rails.postLedgerSettle({
+  authorized_by: "user@example.com",
+});
+```
+
+## Retry Strategies
+
+### Backoff Strategy (Recommended)
+
+Exponential backoff with configurable parameters:
+
+```typescript
+{
+  strategy: "backoff",
+  backoff: {
+    initialInterval: 1000,      // milliseconds
+    maxInterval: 60000,         // milliseconds
+    exponent: 1.5,              // 1 < exponent <= 2
+    maxElapsedTime: 600000,     // milliseconds
+  },
+  retryConnectionErrors: true,
+}
+```
+
+The wait time between retries follows: `min(initialInterval * (exponent ^ attemptNumber), maxInterval)`
+
+### Linear Backoff
+
+For simpler retry behavior:
+
+```typescript
+{
+  strategy: "backoff",
+  backoff: {
+    initialInterval: 1000,
+    maxInterval: 10000,
+    exponent: 1.0,  // Linear (add same amount each time)
+    maxElapsedTime: 120000,
+  },
+  retryConnectionErrors: false,
+}
+```
+
+## Best Practices
+
+### 1. Retry Idempotent Operations Only
+
+Always retry idempotent operations (GET, safe POST):
+
+```typescript
+// Safe to retry - idempotent
+const pending = await rails.getLedgerPending();
+
+// May need careful handling - not idempotent
+const settlement = await rails.postLedgerSettle({
+  authorized_by: "user@example.com",
+  // Add force: true only if absolutely necessary
+});
+```
+
+### 2. Use Appropriate Timeouts
+
+For long-running operations like settlement:
+
+```typescript
+const settlement = await rails.postLedgerSettle(
+  { authorized_by: "user@example.com" },
+  {
+    retries: {
+      strategy: "backoff",
+      backoff: {
+        maxElapsedTime: 600000, // 10 minutes for settlement
+      },
+      retryConnectionErrors: true,
+    },
+  }
+);
+```
+
+### 3. Log Errors for Monitoring
+
+Capture error details for debugging:
+
+```typescript
+try {
+  const result = await rails.getTransactions({
+    page: 1,
+    pageSize: 20,
+  });
+} catch (error) {
+  if (error instanceof errors.RailsError) {
+    console.error({
+      timestamp: new Date().toISOString(),
+      statusCode: error.statusCode,
+      message: error.message,
+      body: error.body,
+    });
+    // Send to monitoring service (e.g., Sentry, Datadog)
+  }
+}
+```
+
+### 4. Circuit Breaker Pattern
+
+For production systems, implement a circuit breaker:
+
+```typescript
+let failureCount = 0;
+let lastFailureTime = 0;
+const FAILURE_THRESHOLD = 5;
+const RESET_TIMEOUT = 60000; // 1 minute
+
+async function safeApiCall() {
+  // Check if circuit is open
+  if (
+    failureCount >= FAILURE_THRESHOLD &&
+    Date.now() - lastFailureTime < RESET_TIMEOUT
+  ) {
+    throw new Error("Circuit breaker open - API unavailable");
+  }
+
+  try {
+    const result = await rails.getDashboardMetrics();
+    failureCount = 0; // Reset on success
+    return result;
+  } catch (error) {
+    failureCount++;
+    lastFailureTime = Date.now();
+    throw error;
+  }
+}
+```
+
+## Common Error Codes
+
+| Code | Meaning | Action |
+|------|---------|--------|
+| 400 | Bad Request | Check request parameters and data validation |
+| 401 | Unauthorized | Verify authentication credentials |
+| 404 | Not Found | Verify resource exists and ID is correct |
+| 409 | Conflict | Resource already exists or state conflict |
+| 429 | Too Many Requests | Implement backoff and retry with delays |
+| 500 | Server Error | Retry with exponential backoff |
+| 503 | Service Unavailable | Retry with longer backoff delays |
+
+## Debugging
+
+Enable detailed logging to debug issues:
+
+```typescript
+const rails = new Rails({
+  serverURL: "http://localhost:8000/api",
+  // Debug mode (if supported)
+  debug: true,
+});
+
+try {
+  const result = await rails.postWebhook({
+    txnRef: "TXN-DEBUG-001",
+    amount: 10000,
+    currency: "NGN",
+    senderAccount: "1111111111",
+    receiverAccount: "2222222222",
+    senderBank: "BANK-A",
+    receiverBank: "BANK-B",
+    timestamp: new Date().toISOString(),
+  });
+} catch (error) {
+  if (error instanceof errors.RailsError) {
+    console.log("Request headers:", error.headers);
+    console.log("Response body:", error.body);
+    console.log("Raw response:", error.rawResponse);
+  }
+}
+```

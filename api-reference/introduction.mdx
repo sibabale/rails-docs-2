@@ -1,0 +1,251 @@
+---
+title: 'Introduction'
+description: 'Rails Banking API - User Management and Account Operations'
+---
+
+## Welcome to the Rails API
+
+The Rails API provides secure REST endpoints for user management and account operations in banking applications. Built with enterprise-grade security and compliance standards, it enables developers to create modern financial applications with confidence.
+
+## API Overview
+
+The Rails API focuses on two core areas:
+
+- **User Management** - Customer onboarding, authentication, and profile management
+- **Account Operations** - Account creation, balance inquiries, and transaction processing
+
+## Authentication
+
+All API endpoints require Bearer token authentication. Include your API key in the `Authorization` header:
+
+```typescript
+const response = await fetch('https://api.rails.com/v1/users', {
+  headers: {
+    'Authorization': 'Bearer your_api_key_here',
+    'Content-Type': 'application/json'
+  }
+});
+```
+
+### API Keys
+
+Rails uses API keys to authenticate requests:
+
+- **Live keys** - For production use (prefix: `rails_live_`)  
+- **Test keys** - For development/testing (prefix: `rails_test_`)
+
+### Token Scopes
+
+API keys have specific permission scopes:
+
+- `users:read` - Read user information
+- `users:write` - Create and update users
+- `accounts:read` - View account details and balances
+- `accounts:write` - Create accounts and process transactions
+
+## Request/Response Format
+
+### Request Headers
+
+Include these headers in all requests:
+
+```typescript
+{
+  'Authorization': 'Bearer your_api_key',
+  'Content-Type': 'application/json',
+  'X-Rails-Version': '2024-01-15'
+}
+```
+
+### Response Format
+
+Successful responses return HTTP 200 with JSON data:
+
+```json
+{
+  "user_id": "user_abc123",
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "john@example.com",
+  "status": "active",
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+Error responses include detailed error information:
+
+```json
+{
+  "error": {
+    "code": "validation_failed",
+    "message": "Email address is already registered",
+    "field": "email"
+  }
+}
+```
+
+## User Management
+
+### Core User Operations
+
+- **POST /v1/users** - Create new users
+- **GET /v1/users/{id}** - Retrieve user details
+- **PUT /v1/users/{id}** - Update user information
+- **GET /v1/users** - List users with filtering
+
+### User Object
+
+```typescript
+interface User {
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  status: 'active' | 'suspended' | 'pending';
+  kyc_status: 'pending' | 'verified' | 'rejected';
+  created_at: string;
+  updated_at: string;
+}
+```
+
+## Account Operations
+
+### Core Account Operations
+
+- **POST /v1/accounts** - Create bank accounts
+- **GET /v1/accounts/{id}** - Get account details
+- **GET /v1/accounts/{id}/balance** - Check account balance
+- **POST /v1/transfers** - Transfer funds between accounts
+- **GET /v1/accounts/{id}/transactions** - Get transaction history
+
+### Account Object
+
+```typescript
+interface Account {
+  account_id: string;
+  user_id: string;
+  account_type: 'checking' | 'savings';
+  account_number: string;
+  balance: number; // Amount in cents
+  currency: string;
+  status: 'active' | 'suspended' | 'closed';
+  created_at: string;
+  updated_at: string;
+}
+```
+
+## Error Handling
+
+Rails uses standard HTTP status codes:
+
+| Status | Description |
+|--------|-------------|
+| 200 | Success |
+| 400 | Bad Request - Invalid parameters |
+| 401 | Unauthorized - Invalid API key |
+| 403 | Forbidden - Insufficient permissions |
+| 404 | Not Found - Resource doesn't exist |
+| 409 | Conflict - Duplicate resource |
+| 429 | Rate Limited - Too many requests |
+| 500 | Server Error - Internal error |
+
+## Rate Limiting
+
+API requests are rate limited to prevent abuse:
+
+- **Default limit**: 1000 requests per hour
+- **Rate limit headers** included in responses:
+
+```
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 999  
+X-RateLimit-Reset: 1640995200
+```
+
+When rate limited, implement exponential backoff:
+
+```typescript
+async function makeRequestWithRetry(url: string, options: any, retries = 3) {
+  try {
+    const response = await fetch(url, options);
+    
+    if (response.status === 429 && retries > 0) {
+      const delay = Math.pow(2, 4 - retries) * 1000; // 2s, 4s, 8s
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return makeRequestWithRetry(url, options, retries - 1);
+    }
+    
+    return response;
+  } catch (error) {
+    throw error;
+  }
+}
+```
+
+## TypeScript SDK
+
+For the best developer experience, use the official TypeScript SDK:
+
+```bash
+npm install @rails/sdk
+```
+
+The SDK provides type-safe methods for all API operations:
+
+```typescript
+import { Rails } from "@rails/sdk";
+
+const rails = new Rails({
+  apiKey: process.env.RAILS_API_KEY
+});
+
+// Create user
+const user = await rails.users.create({
+  firstName: "John",
+  lastName: "Doe", 
+  email: "john@example.com"
+});
+
+// Create account
+const account = await rails.accounts.create({
+  userId: user.userId,
+  accountType: "checking"
+});
+
+// Check balance
+const balance = await rails.accounts.getBalance(account.accountId);
+```
+
+## Testing
+
+Rails provides a sandbox environment for testing:
+
+- **Sandbox URL**: `https://api.sandbox.rails.com`
+- **Test API keys**: Use keys prefixed with `rails_test_`
+- **Test data**: All operations use fake data
+
+```typescript
+// Configure for sandbox testing
+const rails = new Rails({
+  apiKey: process.env.RAILS_TEST_API_KEY,
+  baseURL: "https://api.sandbox.rails.com"
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Users API" icon="users" href="/api-reference/users">
+    Create and manage user accounts
+  </Card>
+  <Card title="Accounts API" icon="wallet" href="/api-reference/accounts">
+    Handle account operations and transactions
+  </Card>
+  <Card title="SDK Guide" icon="code" href="/guides/sdk-installation">
+    Get started with the TypeScript SDK
+  </Card>
+  <Card title="Examples" icon="sparkles" href="/guides/sdk-examples">
+    See real-world integration examples
+  </Card>
+</CardGroup>

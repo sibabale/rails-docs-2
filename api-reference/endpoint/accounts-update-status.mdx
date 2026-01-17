@@ -1,0 +1,131 @@
+---
+title: "Update Account Status"
+api: "PATCH https://api.rails.com/api/v1/accounts/{id}"
+description: "Update the status of an account"
+---
+
+Updates the status of a specific account.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  Unique identifier for the account (UUID format)
+</ParamField>
+
+## Request
+
+<ParamField body="status" type="string" required>
+  New account status: `active`, `suspended`, or `closed`
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique identifier for the account (UUID)
+</ResponseField>
+
+<ResponseField name="account_number" type="string">
+  Account number
+</ResponseField>
+
+<ResponseField name="account_type" type="string">
+  Type of account: `checking` or `saving`
+</ResponseField>
+
+<ResponseField name="user_id" type="string">
+  ID of the account owner
+</ResponseField>
+
+<ResponseField name="balance" type="number">
+  Current account balance (decimal)
+</ResponseField>
+
+<ResponseField name="currency" type="string">
+  Currency code (e.g., `USD`)
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Updated account status: `active`, `suspended`, or `closed`
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp of account creation
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  ISO 8601 timestamp of last update
+</ResponseField>
+
+## Example
+
+<RequestExample>
+
+```typescript TypeScript SDK
+import { Rails } from "@rails/sdk";
+
+const rails = new Rails({
+  apiKey: process.env.RAILS_API_KEY
+});
+
+const account = await rails.accounts.updateStatus("123e4567-e89b-12d3-a456-426614174000", {
+  status: "suspended"
+});
+
+console.log("Account status updated:", account.status);
+console.log("Updated at:", account.updatedAt);
+```
+
+```typescript Fetch API
+const response = await fetch('https://api.rails.com/api/v1/accounts/123e4567-e89b-12d3-a456-426614174000', {
+  method: 'PATCH',
+  headers: {
+    'Authorization': 'Bearer your_api_key_here',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    status: "suspended"
+  })
+});
+
+const account = await response.json();
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json Success Response (200 OK)
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "account_number": "ACC001234567",
+  "account_type": "checking",
+  "user_id": "456e7890-e89b-12d3-a456-426614174000",
+  "balance": 1250.75,
+  "currency": "USD",
+  "status": "suspended",
+  "organization_id": null,
+  "environment": "production",
+  "created_at": "2024-01-15T10:35:00Z",
+  "updated_at": "2024-01-15T16:45:00Z"
+}
+```
+
+```json Error Response (400 Bad Request)
+{
+  "error": {
+    "code": "validation_error",
+    "message": "status field is required"
+  }
+}
+```
+
+</ResponseExample>
+
+## Error Codes
+
+| Code | Description |
+|------|-------------|
+| `validation_error` | Missing or invalid status field |
+| `account_not_found` | Account ID does not exist |
+| `unauthorized` | Invalid or missing API key |
+| `invalid_status` | Status must be `active`, `suspended`, or `closed` |

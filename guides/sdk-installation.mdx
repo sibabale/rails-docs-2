@@ -1,0 +1,82 @@
+---
+title: "SDK Installation"
+description: "Get started with the Rails TypeScript SDK"
+---
+
+The Rails TypeScript SDK is a type-safe, auto-generated client for the Rails API. It provides full type safety and IDE autocomplete for all API operations.
+
+## Installation
+
+Install the SDK using your preferred package manager:
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @rails/sdk
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @rails/sdk
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn add @rails/sdk
+    ```
+  </Tab>
+  <Tab title="bun">
+    ```bash
+    bun add @rails/sdk
+    ```
+  </Tab>
+</Tabs>
+
+## Basic Setup
+
+Initialize the Rails SDK client in your application:
+
+```typescript
+import { Rails } from "@rails/sdk";
+
+const rails = new Rails({
+  // Configuration options
+  serverURL: "http://localhost:8000/api",
+});
+```
+
+## Configuration Options
+
+The SDK accepts several configuration options when initializing:
+
+| Option | Type | Description | Default |
+|--------|------|-------------|---------|
+| `serverURL` | `string` | API server base URL | `http://localhost:8000/api` |
+| `retryConfig` | `RetryConfig` | Global retry strategy for all operations | Built-in defaults |
+| `timeout` | `number` | Request timeout in milliseconds | 30000 |
+
+## Server Selection
+
+You can override the server URL for specific requests or set it globally during initialization:
+
+```typescript
+import { Rails } from "@rails/sdk";
+
+const rails = new Rails({
+  serverURL: "https://api.example.com",
+});
+```
+
+For local development:
+
+```typescript
+const rails = new Rails({
+  serverURL: "http://localhost:8000/api",
+});
+```
+
+## Next Steps
+
+- Explore [core API methods](/guides/sdk-core-methods)
+- Learn about [error handling](/guides/sdk-error-handling)
+- Check out [integration examples](/guides/sdk-examples)
