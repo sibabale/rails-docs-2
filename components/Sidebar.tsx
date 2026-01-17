@@ -1,15 +1,26 @@
 
 import React from 'react';
-import { ApiEndpoint } from '../types';
+import { ApiEndpoint, SyncStatus } from '../types';
 
 interface SidebarProps {
   endpoints: ApiEndpoint[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onAdd: () => void;
+  onPull: () => void;
+  syncStatus: SyncStatus;
+  lastSynced?: number;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ endpoints, selectedId, onSelect, onAdd }) => {
+const Sidebar: React.FC<SidebarProps> = ({ 
+  endpoints, 
+  selectedId, 
+  onSelect, 
+  onAdd, 
+  onPull, 
+  syncStatus,
+  lastSynced 
+}) => {
   return (
     <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-full">
       <div className="p-4 border-b border-slate-800 flex justify-between items-center">
@@ -24,10 +35,11 @@ const Sidebar: React.FC<SidebarProps> = ({ endpoints, selectedId, onSelect, onAd
           </svg>
         </button>
       </div>
+
       <div className="flex-1 overflow-y-auto">
         {endpoints.length === 0 ? (
           <div className="p-8 text-center text-slate-500 text-sm">
-            No endpoints yet. Create one to get started.
+            No endpoints yet. Create one or pull from GitHub.
           </div>
         ) : (
           endpoints.map((ep) => (
@@ -53,6 +65,41 @@ const Sidebar: React.FC<SidebarProps> = ({ endpoints, selectedId, onSelect, onAd
             </button>
           ))
         )}
+      </div>
+
+      {/* GitHub Sync Section */}
+      <div className="p-4 bg-slate-950/50 border-t border-slate-800">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase font-bold tracking-widest">
+            <span>GitHub Repo</span>
+            {lastSynced && (
+              <span className="text-emerald-500/80">Synced {new Date(lastSynced).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            )}
+          </div>
+          <button
+            onClick={onPull}
+            disabled={syncStatus.isSyncing}
+            className={`flex items-center justify-center gap-2 w-full py-2 rounded-lg text-xs font-semibold transition-all ${
+              syncStatus.isSyncing 
+                ? 'bg-slate-800 text-slate-500 cursor-not-allowed' 
+                : 'bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-indigo-600/20 hover:border-indigo-600'
+            }`}
+          >
+            {syncStatus.isSyncing ? (
+              <>
+                <div className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+                Pulling...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Pull Latest
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

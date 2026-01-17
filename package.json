@@ -1,14 +1,12 @@
 {
-  "name": "rails-docs",
+  "name": "api-forge-ai",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "docs:dev": "mintlify dev",
-    "docs:build": "mintlify build"
+    "preview": "vite preview"
   },
   "dependencies": {
     "react": "^19.2.3",
@@ -18,7 +16,6 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "mintlify": "^4.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

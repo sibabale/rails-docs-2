@@ -1,14 +1,17 @@
 
 import React, { useState, useCallback } from 'react';
-import { ApiEndpoint } from './types';
+import { ApiEndpoint, SyncStatus } from './types';
 import Sidebar from './components/Sidebar';
 import Editor from './components/Editor';
 import { generateEndpoint } from './services/geminiService';
+import { pullFromGithub } from './services/githubService';
 
 const App: React.FC = () => {
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
   const [selectedEndpointId, setSelectedEndpointId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({ isSyncing: false });
+  const [lastSynced, setLastSynced] = useState<number | undefined>(undefined);
   const [prompt, setPrompt] = useState('');
 
   const handleAddEndpoint = useCallback(async () => {
@@ -39,6 +42,27 @@ const App: React.FC = () => {
     }
   }, [prompt]);
 
+  const handlePullFromGithub = async () => {
+    setSyncStatus({ isSyncing: true });
+    try {
+      const remoteEndpoints = await pullFromGithub('github.com/api-forge/main');
+      setEndpoints(prev => {
+        // Merge strategy: Add new endpoints, keep local ones
+        const combined = [...prev];
+        remoteEndpoints.forEach(remote => {
+          if (!combined.find(c => c.path === remote.path && c.method === remote.method)) {
+            combined.push(remote);
+          }
+        });
+        return combined;
+      });
+      setLastSynced(Date.now());
+      setSyncStatus({ isSyncing: false, lastAction: 'PULL' });
+    } catch (err) {
+      setSyncStatus({ isSyncing: false, error: 'Failed to pull from GitHub' });
+    }
+  };
+
   const handleUpdateEndpoint = (id: string, updates: Partial<ApiEndpoint>) => {
     setEndpoints(prev => prev.map(ep => ep.id === id ? { ...ep, ...updates } : ep));
   };
@@ -52,6 +76,9 @@ const App: React.FC = () => {
         selectedId={selectedEndpointId}
         onSelect={setSelectedEndpointId}
         onAdd={() => setSelectedEndpointId(null)}
+        onPull={handlePullFromGithub}
+        syncStatus={syncStatus}
+        lastSynced={lastSynced}
       />
       
       <main className="flex-1 flex flex-col min-w-0">
@@ -64,7 +91,7 @@ const App: React.FC = () => {
             </div>
             <h1 className="text-4xl font-bold text-white mb-4">What API shall we build?</h1>
             <p className="text-slate-400 text-lg mb-8 leading-relaxed">
-              Describe the endpoint you need. For example: "A user profile endpoint that returns social media stats and verified status."
+              Describe the endpoint you need, or sync with GitHub to pull your existing repository schemas.
             </p>
             
             <div className="w-full relative group">
@@ -126,8 +153,10 @@ const App: React.FC = () => {
       {/* Global Header */}
       <div className="fixed top-0 right-0 p-4 pointer-events-none flex items-center gap-3">
          <div className="px-3 py-1 bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-full flex items-center gap-2 pointer-events-auto">
-           <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">AI Engine Online</span>
+           <div className={`w-2 h-2 rounded-full ${syncStatus.isSyncing ? 'bg-amber-500 animate-spin' : 'bg-emerald-500 animate-pulse'}`}></div>
+           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+             {syncStatus.isSyncing ? 'Syncing Repository...' : 'AI Engine Online'}
+           </span>
          </div>
       </div>
     </div>

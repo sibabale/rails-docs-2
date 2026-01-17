@@ -14,6 +14,8 @@ export interface ApiEndpoint {
 export interface ProjectState {
   endpoints: ApiEndpoint[];
   selectedEndpointId: string | null;
+  repoUrl?: string;
+  lastSynced?: number;
 }
 
 export enum ViewMode {
@@ -21,4 +23,10 @@ export enum ViewMode {
   DOCS = 'DOCS',
   TEST = 'TEST',
   CODE = 'CODE'
+}
+
+export interface SyncStatus {
+  isSyncing: boolean;
+  lastAction?: 'PULL' | 'PUSH';
+  error?: string;
 }
