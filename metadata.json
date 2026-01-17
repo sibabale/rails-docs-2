@@ -1,0 +1,5 @@
+{
+  "name": "API Forge AI",
+  "description": "A sophisticated AI-driven workspace for designing, documenting, and prototyping RESTful APIs using natural language. Generate schemas, mock responses, and client code in seconds.",
+  "requestFramePermissions": []
+}
